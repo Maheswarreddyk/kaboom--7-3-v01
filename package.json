@@ -1,0 +1,30 @@
+{
+  "name": "indiatv",
+  "version": "1.0.0",
+  "private": true,
+  "description": "IndiaTV - Anonymous Random Video Chat Platform",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "vercel dev",
+    "dev:frontend": "npm run dev -w indiatv-frontend",
+    "build": "npm run build -w indiatv-frontend && node scripts/copy-build.js && npm install --prefix backend && npm run build --prefix backend",
+    "start": "node backend/dist/index.js",
+    "preview": "npm run preview -w indiatv-frontend",
+    "typecheck": "npm run typecheck -w indiatv-frontend"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/uuid": "^10.0.0",
+    "@vercel/node": "^5.1.14",
+    "concurrently": "^9.1.2",
+    "vercel": "^41.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
