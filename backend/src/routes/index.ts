@@ -49,6 +49,9 @@ export function createRouter(engines: Engines): Router {
     const result = await engines.session.create({ country, browser, device, platform });
     const session = await engines.session.validate(result.sessionId);
 
+    // Register session to allow realtime broadcasts
+    engines.signaling.signaling.registerSession(result.sessionId, 'rest');
+
     res.status(201).json({
       success: true,
       data: {
@@ -112,6 +115,9 @@ export function createRouter(engines: Engines): Router {
       res.status(401).json({ success: false, error: 'Invalid session credentials' });
       return;
     }
+
+    // Register session to allow realtime broadcasts
+    engines.signaling.signaling.registerSession(sessionId, 'rest');
 
     await engines.session.transitionState(sessionId, 'searching');
     await engines.queue.join(sessionId);

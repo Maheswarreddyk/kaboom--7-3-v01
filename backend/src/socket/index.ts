@@ -213,6 +213,17 @@ export function setupSocketHandlers(io: Server, engines: Engines): void {
     socket.on('heartbeat', async () => {
       await engines.queue.heartbeat(sessionId);
       await engines.session.heartbeat(sessionId);
+
+      // Trigger matchmaking loop on heartbeat
+      const matchResult = await engines.matching.findBestMatch(sessionId);
+      if (matchResult) {
+        await engines.reservation.reserveAndConfirm(
+          sessionId,
+          matchResult.candidateSessionId,
+          matchResult.totalScore,
+          matchResult.breakdown
+        );
+      }
     });
 
     socket.on('next', async () => {

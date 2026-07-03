@@ -33,24 +33,52 @@ export class QueueEngine {
 
   /**
    * Idempotently join the queue.
-   * Removes any existing queue entries for the session and inserts a new one.
+   * Keeps existing waiting entry alive to accumulate wait time age.
    */
   async join(sessionId: string): Promise<WaitingQueueEntryV2> {
     const start = Date.now();
 
-    // 1. Clean up any existing entries for this session
+    // 1. Check if an active waiting entry already exists
+    const existing = await this.db.queryOne<any>('waiting_queue', {
+      filters: [
+        { column: 'session_id', operator: 'eq', value: sessionId },
+        { column: 'status', operator: 'eq', value: 'waiting' },
+      ],
+    });
+
+    if (existing) {
+      const nowStr = new Date().toISOString();
+      await this.db.update(
+        'waiting_queue',
+        [{ column: 'id', operator: 'eq', value: existing.id }],
+        {
+          joined_at: nowStr,
+          reserved_by: null,
+          reserved_at: null,
+        }
+      );
+      this.logger.metric(QueueEngine.ENGINE, 'queue_join_idempotent', Date.now() - start, { sessionId });
+      return {
+        ...existing,
+        joined_at: nowStr,
+      };
+    }
+
+    // 2. Clean up any other old entries for this session
     await this.db.delete('waiting_queue', [
       { column: 'session_id', operator: 'eq', value: sessionId },
     ]);
 
-    // 2. Insert new waiting entry
+    // 3. Insert new waiting entry with search_started tracking
+    const now = new Date().toISOString();
     const entry = await this.db.insert<WaitingQueueEntryV2>('waiting_queue', {
       session_id: sessionId,
       status: 'waiting',
-      joined_at: new Date().toISOString(),
+      joined_at: now,
+      search_started: now as any,
     });
 
-    this.logger.metric(QueueEngine.ENGINE, 'queue_join', Date.now() - start, { sessionId });
+    this.logger.metric(QueueEngine.ENGINE, 'queue_join_new', Date.now() - start, { sessionId });
     this.eventBus.emit('queue:joined', { sessionId, timestamp: new Date(entry.joined_at) });
 
     return entry;

@@ -171,15 +171,15 @@ export class MatchingEngine {
     }
 
     // Determine self's waiting time
-    const selfQueueEntry = await this.db.queryOne<{ joined_at: string }>('waiting_queue', {
-      select: ['joined_at'],
+    const selfQueueEntry = await this.db.queryOne<{ joined_at: string; search_started?: string }>('waiting_queue', {
+      select: ['joined_at', 'search_started'],
       filters: [
         { column: 'session_id', operator: 'eq', value: sessionId },
         { column: 'status', operator: 'eq', value: 'waiting' },
       ],
     });
     const waitingSeconds = selfQueueEntry
-      ? (Date.now() - new Date(selfQueueEntry.joined_at).getTime()) / 1000
+      ? (Date.now() - new Date(selfQueueEntry.search_started || selfQueueEntry.joined_at).getTime()) / 1000
       : 0;
 
     const context: ScoringContext = {
