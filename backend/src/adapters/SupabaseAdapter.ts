@@ -17,7 +17,13 @@ export class SupabaseAdapter implements DatabasePort {
     for (const f of filters) {
       switch (f.operator) {
         case 'eq': query = query.eq(f.column, f.value); break;
-        case 'neq': query = query.neq(f.column, f.value); break;
+        case 'neq':
+          if (f.value === null) {
+            query = query.not(f.column, 'is', null);
+          } else {
+            query = query.neq(f.column, f.value);
+          }
+          break;
         case 'gt': query = query.gt(f.column, f.value); break;
         case 'gte': query = query.gte(f.column, f.value); break;
         case 'lt': query = query.lt(f.column, f.value); break;
