@@ -1,13 +1,10 @@
 import axios from 'axios';
 import type { ReportReason, SessionData, StatsData } from '../types/index.js';
 import { getBrowserInfo, retry } from '../utils/index.js';
-
-import { config } from '../config.js';
-
-const API_URL = config.apiUrl;
+import { getApiBaseUrl } from '../config.js';
 
 const api = axios.create({
-  baseURL: `${API_URL}/api`,
+  baseURL: `${getApiBaseUrl()}/api`,
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',

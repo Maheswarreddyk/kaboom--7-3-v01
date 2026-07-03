@@ -13,6 +13,7 @@ import {
 } from '../middleware/rateLimiter.js';
 
 import { getSupabase } from '../database/client.js';
+import { config } from '../config/index.js';
 import { joinQueue, leaveQueue, nextPartner, notifyPartnerLeft } from '../services/matchService.js';
 import { broadcastToSession } from '../services/realtimeService.js';
 
@@ -221,7 +222,7 @@ router.post('/chat', async (req, res, next) => {
 router.get('/analytics', async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader || authHeader !== 'Bearer admin-token') {
+    if (!config.adminToken || !authHeader || authHeader !== `Bearer ${config.adminToken}`) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     

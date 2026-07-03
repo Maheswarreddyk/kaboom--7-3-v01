@@ -2,7 +2,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabaseClient } from './supabase.js';
 import type { IceServerConfig } from '../types/index.js';
 import { io, Socket } from 'socket.io-client';
-import { config } from '../config.js';
+import { config, getApiBaseUrl, getSocketUrl } from '../config.js';
 
 export interface RealtimeCallbacks {
   onWaiting?: (data: { queuePosition: number; message: string }) => void;
@@ -30,7 +30,7 @@ let matchChannel: RealtimeChannel | null = null;
 let currentMatchId: string | null = null;
 let partnerSessionId: string | null = null;
 
-const API_BASE = config.apiUrl;
+const API_BASE = getApiBaseUrl();
 
 async function apiPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const response = await fetch(`${API_BASE}/api${path}`, {
@@ -91,7 +91,7 @@ export function connectRealtime(
   if (config.signalingProvider === 'socketio') {
     disconnectRealtime();
     
-    const socketUrl = config.apiUrl || window.location.origin;
+    const socketUrl = getSocketUrl();
     socket = io(socketUrl, {
       auth: { sessionId, sessionToken },
       transports: ['websocket'],

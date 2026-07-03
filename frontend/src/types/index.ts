@@ -54,6 +54,7 @@ export interface ChatState {
   city?: string;
   interestTags?: string[];
   liked?: boolean;
+  likeAnimating?: boolean;
   partnerLiked?: boolean;
   mutualLike?: boolean;
   messages?: Array<{ id: string; senderSessionId: string; message: string; createdAt: number }>;

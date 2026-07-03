@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { REPORT_REASONS, type ReportReason } from '../types/index.js';
+import { cn } from '../utils/index.js';
 
 interface ReportModalProps {
   isOpen: boolean;
@@ -28,62 +29,68 @@ export function ReportModal({ isOpen, onClose, onSubmit }: ReportModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative glass-card w-full max-w-md animate-slide-up">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white">Report User</h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-white/60 hover:text-white transition-colors"
-          >
-            ✕
-          </button>
-        </div>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="report-title">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-xs animate-fade-in" onClick={onClose} aria-hidden="true" />
+      <div className="relative surface-elevated w-full max-w-md animate-slide-up shadow-soft-xl">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 id="report-title" className="text-heading text-content-primary">Report User</h2>
+            <button
+              onClick={onClose}
+              className="w-9 h-9 rounded-xl hover:bg-white/8 flex items-center justify-center text-content-tertiary hover:text-content-primary transition-colors"
+              aria-label="Close"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-white/70 mb-2">Reason</label>
-            <div className="grid grid-cols-2 gap-2">
-              {REPORT_REASONS.map((r) => (
-                <button
-                  key={r.value}
-                  type="button"
-                  onClick={() => setReason(r.value)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                    reason === r.value
-                      ? 'bg-danger/20 text-danger border border-danger/40'
-                      : 'glass hover:bg-white/10 text-white/70'
-                  }`}
-                >
-                  {r.label}
-                </button>
-              ))}
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label className="block text-caption font-medium text-content-secondary mb-3">Reason</label>
+              <div className="grid grid-cols-2 gap-2">
+                {REPORT_REASONS.map((r) => (
+                  <button
+                    key={r.value}
+                    type="button"
+                    onClick={() => setReason(r.value)}
+                    className={cn(
+                      'px-3 py-2.5 rounded-xl text-caption font-medium transition-all duration-200',
+                      reason === r.value
+                        ? 'bg-danger-muted text-danger border border-danger/35'
+                        : 'bg-surface-glass border border-edge text-content-secondary hover:bg-white/8 hover:text-content-primary'
+                    )}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-white/70 mb-2">
-              Additional notes (optional)
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Describe what happened..."
-              rows={3}
-              className="w-full px-3 py-2 rounded-xl glass text-white placeholder-white/30 resize-none focus:outline-none focus:ring-2 focus:ring-accent/50"
-            />
-          </div>
+            <div>
+              <label className="block text-caption font-medium text-content-secondary mb-2">
+                Additional notes (optional)
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Describe what happened…"
+                rows={3}
+                className="textarea-field"
+              />
+            </div>
 
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1">
-              Cancel
-            </button>
-            <button type="submit" disabled={isSubmitting} className="btn-danger flex-1">
-              {isSubmitting ? 'Submitting...' : 'Submit Report'}
-            </button>
-          </div>
-        </form>
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={onClose} className="btn-secondary flex-1">
+                Cancel
+              </button>
+              <button type="submit" disabled={isSubmitting} className="btn-danger flex-1">
+                {isSubmitting ? 'Submitting…' : 'Submit Report'}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );

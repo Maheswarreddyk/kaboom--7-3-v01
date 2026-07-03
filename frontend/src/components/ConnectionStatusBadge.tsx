@@ -6,21 +6,30 @@ interface ConnectionStatusBadgeProps {
   className?: string;
 }
 
-const statusConfig: Record<ConnectionStatus, { label: string; color: string; dot: string }> = {
-  disconnected: { label: 'Disconnected', color: 'text-white/50', dot: 'bg-white/30' },
-  connecting: { label: 'Connecting...', color: 'text-yellow-400', dot: 'bg-yellow-400 animate-pulse' },
-  connected: { label: 'Connected', color: 'text-success', dot: 'bg-success' },
-  failed: { label: 'Connection Failed', color: 'text-danger', dot: 'bg-danger' },
-  reconnecting: { label: 'Reconnecting...', color: 'text-yellow-400', dot: 'bg-yellow-400 animate-pulse' },
+const statusConfig: Record<ConnectionStatus, { label: string; badgeClass: string }> = {
+  disconnected: { label: 'Disconnected', badgeClass: 'badge bg-white/5 text-content-tertiary border-edge' },
+  connecting: { label: 'Connecting…', badgeClass: 'badge-warning' },
+  connected: { label: 'Connected', badgeClass: 'badge-success' },
+  failed: { label: 'Connection failed', badgeClass: 'badge bg-danger-muted text-danger border-danger/25' },
+  reconnecting: { label: 'Reconnecting…', badgeClass: 'badge-warning' },
 };
 
 export function ConnectionStatusBadge({ status, className }: ConnectionStatusBadgeProps) {
   const config = statusConfig[status];
 
   return (
-    <div className={cn('flex items-center gap-2', className)}>
-      <span className={cn('w-2 h-2 rounded-full', config.dot)} />
-      <span className={cn('text-sm font-medium', config.color)}>{config.label}</span>
+    <div className={cn(config.badgeClass, className)} role="status" aria-live="polite">
+      <span
+        className={cn(
+          'w-1.5 h-1.5 rounded-full',
+          status === 'connected' && 'bg-success',
+          (status === 'connecting' || status === 'reconnecting') && 'bg-warning animate-pulse-soft',
+          status === 'failed' && 'bg-danger',
+          status === 'disconnected' && 'bg-content-tertiary'
+        )}
+        aria-hidden="true"
+      />
+      {config.label}
     </div>
   );
 }

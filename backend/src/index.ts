@@ -28,7 +28,7 @@ const allowedOrigins = [
 const io = new SocketServer(server, {
   cors: {
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+      if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com')) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));
@@ -54,6 +54,8 @@ app.use(helmet({
         "wss://*.supabase.co",
         "https://*.supabase.in",
         "wss://*.supabase.in",
+        "https://*.onrender.com",
+        "wss://*.onrender.com",
         "https://*.vercel.app",
         "wss://*.vercel.app",
         "stun:*",
@@ -73,7 +75,7 @@ app.use(helmet({
 app.use(compression());
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com')) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));

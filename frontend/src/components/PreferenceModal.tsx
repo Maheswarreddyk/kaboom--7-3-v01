@@ -152,12 +152,12 @@ export function PreferenceModal({ isOpen, onClose, onSave, currentPreferences = 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-md transition-opacity">
-      <div className="relative w-full max-w-2xl bg-slate-900 border border-white/10 rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[90vh]">
-        {/* Header */}
-        <div className="px-6 py-4 flex items-center justify-between border-b border-white/10 bg-slate-950">
-          <h2 className="text-xl font-bold text-white bg-gradient-to-r from-accent to-pink-400 bg-clip-text text-transparent">Match Preferences</h2>
-          <button onClick={onClose} className="p-2 text-white/50 hover:text-white rounded-full hover:bg-white/5">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="pref-title">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-xs" onClick={onClose} aria-hidden="true" />
+      <div className="relative w-full max-w-2xl surface-elevated rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-soft-xl flex flex-col max-h-[85vh] animate-slide-up">
+        <div className="px-6 py-4 flex items-center justify-between border-b border-edge">
+          <h2 id="pref-title" className="text-heading text-content-primary">Match Preferences</h2>
+          <button onClick={onClose} className="w-9 h-9 rounded-xl hover:bg-white/8 flex items-center justify-center text-content-tertiary hover:text-content-primary transition-colors" aria-label="Close">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -169,7 +169,7 @@ export function PreferenceModal({ isOpen, onClose, onSave, currentPreferences = 
           {/* Identity & Matching */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
-              <label className="block text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">I Am</label>
+              <label className="block text-micro font-semibold text-content-tertiary uppercase tracking-wider mb-2">I Am</label>
               <div className="grid grid-cols-2 gap-2">
                 {['Male', 'Female', 'Non Binary', 'Prefer not to say'].map((g) => (
                   <button
@@ -179,8 +179,8 @@ export function PreferenceModal({ isOpen, onClose, onSave, currentPreferences = 
                     className={cn(
                       "px-3 py-2 text-sm rounded-xl font-medium border text-center transition-all duration-200",
                       gender === g 
-                        ? "bg-accent border-accent text-white shadow-lg shadow-accent/20" 
-                        : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
+                        ? "bg-brand border-brand text-white shadow-soft-sm" 
+                        : "border-edge bg-surface-glass text-content-secondary hover:bg-white/8"
                     )}
                   >
                     {g}
@@ -190,7 +190,7 @@ export function PreferenceModal({ isOpen, onClose, onSave, currentPreferences = 
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-white/50 uppercase tracking-wider mb-2">Looking For</label>
+              <label className="block text-micro font-semibold text-content-tertiary uppercase tracking-wider mb-2">Looking For</label>
               <div className="grid grid-cols-3 gap-2">
                 {['Male', 'Female', 'Anyone'].map((l) => (
                   <button
@@ -200,8 +200,8 @@ export function PreferenceModal({ isOpen, onClose, onSave, currentPreferences = 
                     className={cn(
                       "px-3 py-2 text-sm rounded-xl font-medium border text-center transition-all duration-200",
                       lookingFor.includes(l)
-                        ? "bg-accent border-accent text-white shadow-lg shadow-accent/20" 
-                        : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
+                        ? "bg-brand border-brand text-white shadow-soft-sm" 
+                        : "border-edge bg-surface-glass text-content-secondary hover:bg-white/8"
                     )}
                   >
                     {l}
@@ -213,28 +213,28 @@ export function PreferenceModal({ isOpen, onClose, onSave, currentPreferences = 
 
           {/* Location & Interest Tabs */}
           <div>
-            <div className="flex border-b border-white/10 mb-4">
+            <div className="flex border-b border-edge mb-4">
               <button
                 onClick={() => setActiveTab('location')}
                 className={cn(
-                  "flex-1 pb-3 text-sm font-semibold border-b-2 transition-all",
+                  "flex-1 pb-3 text-caption font-semibold border-b-2 transition-all",
                   activeTab === 'location' 
-                    ? "border-accent text-accent-light" 
-                    : "border-transparent text-white/50 hover:text-white"
+                    ? "border-brand text-brand" 
+                    : "border-transparent text-content-tertiary hover:text-content-primary"
                 )}
               >
-                📍 Location
+                Location
               </button>
               <button
                 onClick={() => setActiveTab('interests')}
                 className={cn(
-                  "flex-1 pb-3 text-sm font-semibold border-b-2 transition-all",
+                  "flex-1 pb-3 text-caption font-semibold border-b-2 transition-all",
                   activeTab === 'interests' 
-                    ? "border-accent text-accent-light" 
-                    : "border-transparent text-white/50 hover:text-white"
+                    ? "border-brand text-brand" 
+                    : "border-transparent text-content-tertiary hover:text-content-primary"
                 )}
               >
-                ✨ Interests & Languages
+                Interests & Languages
               </button>
             </div>
 
@@ -247,7 +247,7 @@ export function PreferenceModal({ isOpen, onClose, onSave, currentPreferences = 
                     placeholder="Search by city, state, or country..."
                     value={locationQuery}
                     onChange={(e) => setLocationQuery(e.target.value)}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all duration-300 ease-out"
+                    className="input-field"
                   />
                   {locationResults.length > 0 && (
                     <div className="mt-2 bg-slate-950 border border-white/10 rounded-xl max-h-48 overflow-y-auto divide-y divide-white/5 shadow-xl">
@@ -301,7 +301,7 @@ export function PreferenceModal({ isOpen, onClose, onSave, currentPreferences = 
                     placeholder="Search e.g. Gaming, Cricket, Chess, AI..."
                     value={interestQuery}
                     onChange={(e) => setInterestQuery(e.target.value)}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all duration-300 ease-out"
+                    className="input-field"
                   />
                   {interestResults.length > 0 && (
                     <div className="mt-2 bg-slate-950 border border-white/10 rounded-xl max-h-48 overflow-y-auto divide-y divide-white/5 shadow-xl">
@@ -358,25 +358,15 @@ export function PreferenceModal({ isOpen, onClose, onSave, currentPreferences = 
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="px-6 py-4 border-t border-white/10 bg-slate-950 flex items-center justify-between">
-          <button
-            onClick={handleReset}
-            className="px-4 py-2 border border-white/10 hover:bg-white/5 text-white/60 hover:text-white text-sm rounded-xl font-medium"
-          >
+        <div className="px-6 py-4 border-t border-edge flex items-center justify-between gap-3">
+          <button onClick={handleReset} className="btn-ghost text-caption">
             Reset All
           </button>
           <div className="flex gap-3">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 border border-white/10 hover:bg-white/5 text-white text-sm rounded-xl font-medium"
-            >
+            <button onClick={onClose} className="btn-secondary text-caption px-4 py-2 min-h-[40px]">
               Cancel
             </button>
-            <button
-              onClick={handleSave}
-              className="px-6 py-2 bg-gradient-to-r from-accent to-purple-600 hover:opacity-90 text-white text-sm rounded-xl font-semibold shadow-lg shadow-accent/20"
-            >
+            <button onClick={handleSave} className="btn-primary text-caption px-6 py-2 min-h-[40px]">
               Save & Join
             </button>
           </div>

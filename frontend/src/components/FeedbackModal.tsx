@@ -31,53 +31,54 @@ export function FeedbackModal({ isOpen, onClose, onSubmit }: FeedbackModalProps)
     onClose();
   };
 
+  const displayRating = hoverRating || rating;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={handleSkip} />
-      <div className="relative glass-card max-w-md w-full animate-fade-in">
-        <h2 className="text-xl font-semibold text-white mb-2">How was your chat?</h2>
-        <p className="text-sm text-white/50 mb-6">Your feedback helps us improve IndiaTV.</p>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="feedback-title">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-xs animate-fade-in" onClick={handleSkip} aria-hidden="true" />
+      <div className="relative surface-elevated max-w-md w-full animate-scale-up shadow-soft-xl">
+        <div className="p-6">
+          <h2 id="feedback-title" className="text-heading text-content-primary mb-1">How was your chat?</h2>
+          <p className="text-caption text-content-tertiary mb-6">Your feedback helps us improve IndiaTV.</p>
 
-        <div className="flex justify-center gap-2 mb-6">
-          {[1, 2, 3, 4, 5].map((star) => (
-            <button
-              key={star}
-              type="button"
-              onClick={() => setRating(star)}
-              onMouseEnter={() => setHoverRating(star)}
-              onMouseLeave={() => setHoverRating(0)}
-              className="text-3xl transition-transform hover:scale-110"
-            >
-              <span
-                className={cn(
-                  (hoverRating || rating) >= star ? 'text-yellow-400' : 'text-white/20'
-                )}
+          <div className="flex justify-center gap-2 mb-6" role="group" aria-label="Rating">
+            {[1, 2, 3, 4, 5].map((star) => (
+              <button
+                key={star}
+                type="button"
+                onClick={() => setRating(star)}
+                onMouseEnter={() => setHoverRating(star)}
+                onMouseLeave={() => setHoverRating(0)}
+                className="w-11 h-11 rounded-xl hover:bg-white/8 transition-all duration-200 active:scale-95 flex items-center justify-center"
+                aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
               >
-                ★
-              </span>
+                <span className={cn('text-2xl transition-colors duration-200', displayRating >= star ? 'text-warning' : 'text-content-tertiary/30')}>
+                  ★
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <textarea
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            placeholder="Tell us more about your experience (optional)…"
+            rows={3}
+            className="textarea-field mb-6"
+          />
+
+          <div className="flex gap-3">
+            <button onClick={handleSkip} className="btn-secondary flex-1" disabled={submitting}>
+              Skip
             </button>
-          ))}
-        </div>
-
-        <textarea
-          value={feedback}
-          onChange={(e) => setFeedback(e.target.value)}
-          placeholder="Optional: tell us more about your experience..."
-          rows={3}
-          className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/30 text-sm resize-none focus:outline-none focus:border-accent/50 mb-6"
-        />
-
-        <div className="flex gap-3">
-          <button onClick={handleSkip} className="btn-secondary flex-1" disabled={submitting}>
-            Skip
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={rating === 0 || submitting}
-            className="btn-primary flex-1"
-          >
-            {submitting ? 'Submitting...' : 'Submit'}
-          </button>
+            <button
+              onClick={handleSubmit}
+              disabled={rating === 0 || submitting}
+              className="btn-primary flex-1"
+            >
+              {submitting ? 'Submitting…' : 'Submit'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

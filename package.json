@@ -12,7 +12,10 @@
     "build": "npm run build -w indiatv-frontend && node scripts/copy-build.js && npm install --prefix backend && npm run build --prefix backend",
     "start": "node backend/dist/index.js",
     "preview": "npm run preview -w indiatv-frontend",
-    "typecheck": "npm run typecheck -w indiatv-frontend"
+    "typecheck": "npm run typecheck -w indiatv-frontend",
+    "test:api": "node scripts/api-test.mjs",
+    "test:matching": "npx tsx backend/tests/matchingEngine.test.ts",
+    "test:integration": "node scripts/integration-test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

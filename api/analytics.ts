@@ -7,9 +7,9 @@ export default withHandler(async (req: VercelRequest, res: VercelResponse) => {
     throw new AppError(405, 'Method not allowed');
   }
 
-  // Admin access token check
+  const adminToken = process.env.ADMIN_TOKEN;
   const authHeader = req.headers.authorization;
-  if (!authHeader || authHeader !== 'Bearer admin-token') {
+  if (!adminToken || !authHeader || authHeader !== `Bearer ${adminToken}`) {
     throw new AppError(401, 'Unauthorized');
   }
 

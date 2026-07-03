@@ -213,11 +213,8 @@ export function setupSocketHandlers(io: Server): void {
               if (partner) {
                 io.to(partner.socketId).emit('mutual_like', { matchId: data.matchId, partnerSessionId: user.sessionId });
               }
-            } else {
-              if (partner) {
-                io.to(partner.socketId).emit('partner_liked', { matchId: data.matchId });
-              }
             }
+            // Do NOT emit partner_liked — likes are stored silently until mutual
           }
         }
       } catch (err) {

@@ -11,9 +11,13 @@ services:
         value: production
       - key: PORT
         value: 10000
-      - key: FRONTEND_URL
-        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: VITE_SIGNALING_PROVIDER
+        value: supabase

@@ -157,13 +157,8 @@ export function useVideoChat(sessionId: string | null, sessionToken: string | nu
       onError: (data: { message: string }) => {
         showToast('error', data.message);
       },
-      onPartnerLiked: () => {
-        updateChatState({ partnerLiked: true });
-        showToast('success', 'Your partner liked you! ❤️');
-      },
       onMutualLike: () => {
         updateChatState({ mutualLike: true });
-        showToast('success', "It's a Match! ❤️");
       },
       onNewMessage: (data: { matchId: string; senderSessionId: string; message: string; createdAt: string }) => {
         setChatState((prev) => {
@@ -343,22 +338,30 @@ export function useVideoChat(sessionId: string | null, sessionToken: string | nu
   }, [sessionId, sessionToken, showToast]);
 
   const likePartner = useCallback(async () => {
-    if (!sessionId || !sessionToken || !chatState.matchId) return;
+    if (!sessionId || !sessionToken || !chatState.matchId || chatState.liked) return;
+
+    // Optimistic UI: animate immediately, do not notify partner
+    setChatState((prev) => ({ ...prev, liked: true, likeAnimating: true }));
+    if ('vibrate' in navigator) navigator.vibrate(50);
+
+    setTimeout(() => {
+      setChatState((prev) => ({ ...prev, likeAnimating: false }));
+    }, 600);
+
     try {
       if (config.signalingProvider === 'socketio') {
         emitLikePartner(chatState.matchId);
-        setChatState((prev) => ({ ...prev, liked: true }));
       } else {
         const result = await apiService.submitLike(sessionId, sessionToken, chatState.matchId);
-        setChatState((prev) => ({ ...prev, liked: true, mutualLike: result.mutual }));
         if (result.mutual) {
-          showToast('success', "It's a Match! ❤️");
+          setChatState((prev) => ({ ...prev, mutualLike: true }));
         }
       }
     } catch (error) {
+      setChatState((prev) => ({ ...prev, liked: false, likeAnimating: false }));
       showToast('error', 'Failed to like partner');
     }
-  }, [sessionId, sessionToken, chatState.matchId, showToast]);
+  }, [sessionId, sessionToken, chatState.matchId, chatState.liked, showToast]);
 
   const sendChatMessage = useCallback(async (message: string) => {
     if (!sessionId || !sessionToken || !chatState.matchId) return;

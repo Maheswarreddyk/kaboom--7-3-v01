@@ -16,7 +16,7 @@ export function VideoPlayer({
   mirrored = false,
   className,
   label,
-  placeholder = 'Waiting for video...',
+  placeholder = 'Waiting for video…',
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -27,7 +27,7 @@ export function VideoPlayer({
   }, [stream]);
 
   return (
-    <div className={cn('relative overflow-hidden bg-black/50', className)}>
+    <div className={cn('relative overflow-hidden bg-surface', className)}>
       {stream ? (
         <video
           ref={videoRef}
@@ -37,19 +37,19 @@ export function VideoPlayer({
           className={cn('w-full h-full object-cover', mirrored && 'scale-x-[-1]')}
         />
       ) : (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="text-center space-y-3">
-            <div className="w-16 h-16 mx-auto rounded-full bg-white/5 flex items-center justify-center">
-              <svg className="w-8 h-8 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="absolute inset-0 flex items-center justify-center animate-fade-in">
+          <div className="text-center space-y-4 px-6">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-surface-elevated border border-edge flex items-center justify-center">
+              <svg className="w-7 h-7 text-content-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
             </div>
-            <p className="text-white/40 text-sm">{placeholder}</p>
+            <p className="text-caption text-content-tertiary">{placeholder}</p>
           </div>
         </div>
       )}
       {label && (
-        <div className="absolute bottom-3 left-3 px-2 py-1 rounded-md bg-black/50 text-xs text-white/70">
+        <div className="absolute bottom-3 left-3 px-2.5 py-1 rounded-lg bg-black/50 backdrop-blur-xs text-micro text-content-secondary">
           {label}
         </div>
       )}

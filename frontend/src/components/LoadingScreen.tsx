@@ -5,20 +5,22 @@ interface LoadingScreenProps {
   fullScreen?: boolean;
 }
 
-export function LoadingScreen({ message = 'Loading...', fullScreen = true }: LoadingScreenProps) {
+export function LoadingScreen({ message = 'Loading…', fullScreen = true }: LoadingScreenProps) {
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center gap-4',
-        fullScreen ? 'min-h-screen' : 'py-12'
+        'flex flex-col items-center justify-center gap-6 page-enter',
+        fullScreen ? 'min-h-screen' : 'py-16'
       )}
+      role="status"
+      aria-live="polite"
+      aria-label={message}
     >
-      <div className="relative w-16 h-16">
-        <div className="absolute inset-0 rounded-full border-2 border-accent/20" />
-        <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-accent animate-spin" />
-        <div className="absolute inset-2 rounded-full border-2 border-transparent border-t-purple-500 animate-spin-slow" />
+      <div className="relative w-14 h-14">
+        <div className="absolute inset-0 rounded-full border-2 border-brand/15" />
+        <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-brand animate-spin" />
       </div>
-      <p className="text-white/70 text-sm animate-pulse">{message}</p>
+      <p className="text-caption text-content-secondary animate-shimmer">{message}</p>
     </div>
   );
 }
