@@ -1,34 +1,14 @@
-import { getSupabase } from '../database/client.js';
+/**
+ * Realtime Service — Thin wrapper for backward compatibility.
+ * Delegates signaling broadcasts to the V2 engines signaling adapter.
+ */
+
+import { engines } from '../index.js';
 
 export async function broadcastToSession(
   sessionId: string,
   event: string,
   payload: Record<string, unknown>
 ): Promise<void> {
-  try {
-    const supabase = getSupabase();
-    const channel = supabase.channel(`session:${sessionId}`, {
-      config: { broadcast: { ack: false, self: false } },
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Realtime subscribe timeout')), 5000);
-
-      channel.subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          clearTimeout(timeout);
-          resolve();
-        }
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          clearTimeout(timeout);
-          reject(new Error(`Realtime channel error: ${status}`));
-        }
-      });
-    });
-
-    await channel.send({ type: 'broadcast', event, payload });
-    await supabase.removeChannel(channel);
-  } catch (error) {
-    console.error(`[Realtime Broadcast] Failed to send ${event} to session ${sessionId}:`, error);
-  }
+  await engines.signaling.signaling.sendToSession(sessionId, event, payload);
 }

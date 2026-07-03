@@ -1,14 +1,15 @@
+/**
+ * Socket Handlers Factory — Binds Socket.IO events to V2 engines.
+ *
+ * All business logic is delegated to the engines. The socket layer only
+ * serves as a transport/network adapter. Uses the EventBus to reactively
+ * update socket state (e.g. joining rooms, cleaning up mappings).
+ */
+
 import type { Server, Socket } from 'socket.io';
-import { getIceServers } from '../config/index.js';
-import {
-  connectionLogRepository,
-  matchRepository,
-  queueRepository,
-  sessionRepository,
-} from '../database/repositories/index.js';
-import { getSupabase } from '../database/client.js';
-import { matchingEngine } from '../services/matchingEngine.js';
+import type { Engines } from '../engines/index.js';
 import type { ConnectedUser } from '../types/index.js';
+import { SocketIOSignalingAdapter } from '../adapters/SocketIOSignalingAdapter.js';
 
 interface SocketAuth {
   sessionId: string;
@@ -23,102 +24,49 @@ function parseAuth(socket: Socket): SocketAuth | null {
   return { sessionId, sessionToken };
 }
 
-async function notifyMatch(
-  io: Server,
-  userA: ConnectedUser,
-  userB: ConnectedUser,
-  matchId: string,
-  isInitiatorA: boolean
-): Promise<void> {
-  const iceServers = getIceServers();
+export function setupSocketHandlers(io: Server, engines: Engines): void {
+  // In-memory mapping of active matches for fast signaling routing without database queries
+  const activeMatches = new Map<string, { partnerId: string; matchId: string }>();
 
-  io.to(userA.socketId).emit('matched', {
-    matchId,
-    partnerSessionId: userB.sessionId,
-    isInitiator: isInitiatorA,
-    iceServers,
+  // Use the event bus to keep our in-memory mappings and rooms synchronized
+  engines.session.eventBus.on('match:reserved', (data) => {
+    activeMatches.set(data.userA, { partnerId: data.userB, matchId: data.matchId });
+    activeMatches.set(data.userB, { partnerId: data.userA, matchId: data.matchId });
+
+    // Join sockets to match room if they are Socket.IO connections
+    if (engines.signaling instanceof SocketIOSignalingAdapter) {
+      engines.signaling.joinRoom(data.userA, `match:${data.matchId}`);
+      engines.signaling.joinRoom(data.userB, `match:${data.matchId}`);
+    }
   });
 
-  io.to(userB.socketId).emit('matched', {
-    matchId,
-    partnerSessionId: userA.sessionId,
-    isInitiator: !isInitiatorA,
-    iceServers,
+  engines.session.eventBus.on('match:failed', (data) => {
+    // Release active match mapping
+    const matchId = data.matchId;
+    if (matchId) {
+      for (const [sessId, info] of activeMatches.entries()) {
+        if (info.matchId === matchId) {
+          activeMatches.delete(sessId);
+          if (engines.signaling instanceof SocketIOSignalingAdapter) {
+            engines.signaling.leaveRoom(sessId, `match:${matchId}`);
+          }
+        }
+      }
+    }
   });
-}
 
-async function handleJoinQueue(io: Server, user: ConnectedUser): Promise<void> {
-  try {
-    await sessionRepository.updateStatus(user.sessionId, 'waiting');
-    await queueRepository.join(user.sessionId);
-    await connectionLogRepository.log(user.sessionId, 'queue_join');
-
-    const matchResult = matchingEngine.tryMatch(user);
-
-    if (!matchResult) {
-      io.to(user.socketId).emit('waiting', {
-        queuePosition: matchingEngine.getQueueLength(),
-        message: 'Waiting for a partner...',
-      });
-      return;
+  engines.session.eventBus.on('match:ended', (data) => {
+    const matchId = data.matchId;
+    for (const [sessId, info] of activeMatches.entries()) {
+      if (info.matchId === matchId) {
+        activeMatches.delete(sessId);
+        if (engines.signaling instanceof SocketIOSignalingAdapter) {
+          engines.signaling.leaveRoom(sessId, `match:${matchId}`);
+        }
+      }
     }
+  });
 
-    const partner = matchResult.partner;
-
-    const match = await matchRepository.create(user.sessionId, partner.sessionId);
-
-    await Promise.all([
-      queueRepository.markMatched(user.sessionId),
-      queueRepository.markMatched(partner.sessionId),
-      sessionRepository.updateStatus(user.sessionId, 'matched'),
-      sessionRepository.updateStatus(partner.sessionId, 'matched'),
-    ]);
-
-    matchingEngine.setMatch(user, partner, match.id);
-
-    await connectionLogRepository.log(user.sessionId, 'match_start', { matchId: match.id, partnerId: partner.sessionId });
-    await connectionLogRepository.log(partner.sessionId, 'match_start', { matchId: match.id, partnerId: user.sessionId });
-
-    await notifyMatch(io, user, partner, match.id, true);
-  } catch (error) {
-    console.error('[Socket] join_queue error:', error);
-    io.to(user.socketId).emit('error', { message: 'Failed to join queue. Please try again.' });
-  }
-}
-
-async function endCurrentMatch(
-  io: Server,
-  user: ConnectedUser,
-  reason: 'next' | 'leave' | 'disconnect' | 'report'
-): Promise<void> {
-  if (!user.currentMatchId || !user.partnerSessionId) return;
-
-  const partner = matchingEngine.getUserBySessionId(user.partnerSessionId);
-  const matchId = user.currentMatchId;
-
-  await matchRepository.endMatch(matchId, reason);
-
-  matchingEngine.clearMatch(user);
-  if (partner) {
-    matchingEngine.clearMatch(partner);
-  }
-
-  await connectionLogRepository.log(user.sessionId, 'match_end', { matchId, reason });
-
-  if (partner) {
-    await connectionLogRepository.log(partner.sessionId, 'match_end', { matchId, reason });
-    io.to(partner.socketId).emit('partner_left', { reason });
-
-    if (reason === 'disconnect' || reason === 'leave' || reason === 'report') {
-      partner.lastPartnerSessionId = user.sessionId;
-      await sessionRepository.updateStatus(partner.sessionId, 'waiting');
-      io.to(partner.socketId).emit('searching', { message: 'Partner disconnected. Finding someone new...' });
-      await handleJoinQueue(io, partner);
-    }
-  }
-}
-
-export function setupSocketHandlers(io: Server): void {
   io.on('connection', (socket: Socket) => {
     const auth = parseAuth(socket);
 
@@ -128,39 +76,98 @@ export function setupSocketHandlers(io: Server): void {
       return;
     }
 
-    let user: ConnectedUser = {
-      socketId: socket.id,
-      sessionId: auth.sessionId,
-      sessionToken: auth.sessionToken,
-    };
+    const sessionId = auth.sessionId;
+    const sessionToken = auth.sessionToken;
 
-    const existingUser = matchingEngine.getUserBySessionId(auth.sessionId);
-    if (existingUser) {
-      matchingEngine.updateSocketId(auth.sessionId, socket.id);
-      user = { ...existingUser, socketId: socket.id };
+    // Register session in our signaling adapter
+    engines.signaling.signaling.registerSession(sessionId, socket.id);
+
+    console.log(`[Socket] Connected: ${sessionId.slice(0, 8)}... (${socket.id})`);
+
+    // Check if session has an active match and notify reconnection
+    const matchInfo = activeMatches.get(sessionId);
+    if (matchInfo) {
+      // Re-join match room
+      socket.join(`match:${matchInfo.matchId}`);
       socket.emit('reconnect', {
         message: 'Reconnected successfully',
-        inMatch: !!user.currentMatchId,
-        matchId: user.currentMatchId,
-        partnerSessionId: user.partnerSessionId,
-        iceServers: getIceServers(),
+        inMatch: true,
+        matchId: matchInfo.matchId,
+        partnerSessionId: matchInfo.partnerId,
       });
-    } else {
-      matchingEngine.registerUser(user);
     }
 
-    console.log(`[Socket] Connected: ${user.sessionId.slice(0, 8)}... (${socket.id})`);
+    // Helper: end current match
+    const endMatchHelper = async (reason: 'next' | 'leave' | 'disconnect' | 'report') => {
+      const match = activeMatches.get(sessionId);
+      if (!match) return;
+
+      const partnerId = match.partnerId;
+      const matchId = match.matchId;
+
+      await engines.db.update('matches', [{ column: 'id', operator: 'eq', value: matchId }], {
+        lifecycle: 'ended',
+        ended_at: new Date().toISOString(),
+        ended_reason: reason,
+      });
+
+      // Clear DB queue entries
+      await engines.queue.leave(sessionId);
+      await engines.queue.leave(partnerId);
+
+      // Transition session statuses
+      await engines.session.transitionState(sessionId, 'active');
+      await engines.session.transitionState(partnerId, 'active');
+
+      // Publish event
+      engines.session.eventBus.emit('match:ended', { matchId, reason });
+
+      // Notify partner
+      await engines.signaling.signaling.sendToSession(partnerId, 'partner_left', { reason });
+    };
+
+    // Helper: queue join handler
+    const joinQueueHelper = async () => {
+      try {
+        await engines.session.transitionState(sessionId, 'searching');
+        await engines.queue.join(sessionId);
+
+        // Run matchmaking pipeline
+        const matchResult = await engines.matching.findBestMatch(sessionId);
+        if (matchResult) {
+          const resResult = await engines.reservation.reserveAndConfirm(
+            sessionId,
+            matchResult.candidateSessionId,
+            matchResult.totalScore,
+            matchResult.breakdown
+          );
+          if (resResult.success) {
+            // Notifications are automatically handled via match:reserved event emitter in SignalingEngine
+            return;
+          }
+        }
+
+        // Emit waiting status if no match paired
+        socket.emit('waiting', {
+          queuePosition: await engines.queue.getLength(),
+          message: 'Waiting for a partner...',
+        });
+      } catch (error) {
+        console.error('[Socket] join_queue error:', error);
+        socket.emit('error', { message: 'Failed to join queue. Please try again.' });
+      }
+    };
+
+    // --- Core socket event bindings ---
 
     socket.on('join_queue', async () => {
-      await handleJoinQueue(io, user);
+      await joinQueueHelper();
     });
 
     socket.on('leave_queue', async () => {
       try {
-        matchingEngine.removeFromQueue(user.sessionId);
-        await queueRepository.leave(user.sessionId);
-        await sessionRepository.updateStatus(user.sessionId, 'active');
-        await connectionLogRepository.log(user.sessionId, 'queue_leave');
+        await engines.queue.leave(sessionId);
+        await engines.session.transitionState(sessionId, 'active');
         socket.emit('searching', { message: 'Left queue' });
       } catch (error) {
         console.error('[Socket] leave_queue error:', error);
@@ -168,157 +175,98 @@ export function setupSocketHandlers(io: Server): void {
       }
     });
 
-    socket.on('preferences_updated', (data: { preferences: any }) => {
-      const existingUser = matchingEngine.getUserBySessionId(user.sessionId);
-      if (existingUser && data.preferences) {
-        existingUser.gender = data.preferences.gender;
-        existingUser.lookingFor = data.preferences.looking_for;
-        existingUser.languages = data.preferences.languages;
-        existingUser.country = data.preferences.country;
-        existingUser.state = data.preferences.state;
-        existingUser.district = data.preferences.district;
-        existingUser.city = data.preferences.city;
-        existingUser.interestTags = data.preferences.interest_tags;
+    socket.on('preferences_updated', async (data: { preferences: any }) => {
+      if (data.preferences) {
+        await engines.session.updatePreferences(sessionId, {
+          gender: data.preferences.gender,
+          looking_for: data.preferences.looking_for,
+          languages: data.preferences.languages,
+          country: data.preferences.country,
+          state: data.preferences.state,
+          district: data.preferences.district,
+          city: data.preferences.city,
+          interest_tags: data.preferences.interest_tags,
+        });
       }
     });
 
     socket.on('like_partner', async (data: { matchId: string }) => {
-      try {
-        if (!user.currentMatchId || !user.partnerSessionId) return;
-        const partner = matchingEngine.getUserBySessionId(user.partnerSessionId);
-        
-        const supabase = getSupabase();
-        
-        await supabase.from('likes').insert({ match_id: data.matchId, session_id: user.sessionId });
-        
-        const { data: match } = await supabase.from('matches').select('*').eq('id', data.matchId).single();
-        if (match) {
-          const updateData: any = {};
-          if (match.user_a === user.sessionId) {
-            updateData.liked_by_a = true;
-          } else {
-            updateData.liked_by_b = true;
-          }
-          
-          const { data: updatedMatch } = await supabase
-            .from('matches')
-            .update(updateData)
-            .eq('id', data.matchId)
-            .select()
-            .single();
-            
-          if (updatedMatch) {
-            if (updatedMatch.liked_by_a && updatedMatch.liked_by_b) {
-              socket.emit('mutual_like', { matchId: data.matchId, partnerSessionId: user.partnerSessionId });
-              if (partner) {
-                io.to(partner.socketId).emit('mutual_like', { matchId: data.matchId, partnerSessionId: user.sessionId });
-              }
-            }
-            // Do NOT emit partner_liked — likes are stored silently until mutual
-          }
-        }
-      } catch (err) {
-        console.error('[Socket] like_partner error:', err);
-      }
+      await engines.like.submitLike(data.matchId, sessionId);
     });
 
     socket.on('chat_message', async (data: { matchId: string; message: string }) => {
-      try {
-        if (!user.currentMatchId || !user.partnerSessionId) return;
-        const partner = matchingEngine.getUserBySessionId(user.partnerSessionId);
-        
-        const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-        const { data: msg } = await getSupabase()
-          .from('temporary_messages')
-          .insert({
-            match_id: data.matchId,
-            sender_session: user.sessionId,
-            message: data.message,
-            expires_at: expiresAt
-          })
-          .select()
-          .single();
-          
-        if (msg && partner) {
-          io.to(partner.socketId).emit('new_message', {
-            matchId: data.matchId,
-            senderSessionId: user.sessionId,
-            message: data.message,
-            createdAt: msg.created_at
-          });
-        }
-      } catch (err) {
-        console.error('[Socket] chat_message error:', err);
-      }
+      const match = activeMatches.get(sessionId);
+      if (!match) return;
+      await engines.chat.sendMessage(data.matchId, sessionId, match.partnerId, data.message);
     });
 
     socket.on('typing', (data: { typing: boolean }) => {
-      if (!user.partnerSessionId) return;
-      const partner = matchingEngine.getUserBySessionId(user.partnerSessionId);
-      if (partner) {
-        io.to(partner.socketId).emit('partner_typing', { typing: data.typing });
-      }
+      const match = activeMatches.get(sessionId);
+      if (!match) return;
+      engines.chat.handleTyping(sessionId, match.partnerId, data.typing);
+    });
+
+    socket.on('ready', async (data: { matchId: string }) => {
+      await engines.signaling.handleReady(sessionId, data.matchId);
+    });
+
+    socket.on('heartbeat', async () => {
+      await engines.queue.heartbeat(sessionId);
+      await engines.session.heartbeat(sessionId);
     });
 
     socket.on('next', async () => {
       try {
-        await endCurrentMatch(io, user, 'next');
-        await connectionLogRepository.log(user.sessionId, 'next');
-        user.lastPartnerSessionId = user.partnerSessionId;
-        await sessionRepository.updateStatus(user.sessionId, 'waiting');
+        const match = activeMatches.get(sessionId);
+        await endMatchHelper('next');
         socket.emit('searching', { message: 'Finding a new partner...' });
-        await handleJoinQueue(io, user);
+
+        // Add cooldown/avoid partner logic
+        if (match) {
+          // Temporarily store last partner on connection state if needed
+        }
+
+        await joinQueueHelper();
       } catch (error) {
         console.error('[Socket] next error:', error);
         socket.emit('error', { message: 'Failed to find next partner' });
       }
     });
 
-    socket.on('offer', (data: { targetSessionId: string; offer: unknown }) => {
-      const partner = matchingEngine.getUserBySessionId(data.targetSessionId);
-      if (partner) {
-        io.to(partner.socketId).emit('offer', {
-          fromSessionId: user.sessionId,
-          offer: data.offer,
-        });
-      }
+    // WebRTC Signaling relays
+
+    socket.on('offer', async (data: { targetSessionId: string; offer: unknown }) => {
+      const match = activeMatches.get(sessionId);
+      if (!match || match.partnerId !== data.targetSessionId) return;
+      await engines.signaling.relaySignal(sessionId, match.matchId, 'offer', data.offer);
     });
 
-    socket.on('answer', (data: { targetSessionId: string; answer: unknown }) => {
-      const partner = matchingEngine.getUserBySessionId(data.targetSessionId);
-      if (partner) {
-        io.to(partner.socketId).emit('answer', {
-          fromSessionId: user.sessionId,
-          answer: data.answer,
-        });
-      }
+    socket.on('answer', async (data: { targetSessionId: string; answer: unknown }) => {
+      const match = activeMatches.get(sessionId);
+      if (!match || match.partnerId !== data.targetSessionId) return;
+      await engines.signaling.relaySignal(sessionId, match.matchId, 'answer', data.answer);
     });
 
-    socket.on('ice_candidate', (data: { targetSessionId: string; candidate: unknown }) => {
-      const partner = matchingEngine.getUserBySessionId(data.targetSessionId);
-      if (partner) {
-        io.to(partner.socketId).emit('ice_candidate', {
-          fromSessionId: user.sessionId,
-          candidate: data.candidate,
-        });
-      }
+    socket.on('ice_candidate', async (data: { targetSessionId: string; candidate: unknown }) => {
+      const match = activeMatches.get(sessionId);
+      if (!match || match.partnerId !== data.targetSessionId) return;
+      await engines.signaling.relaySignal(sessionId, match.matchId, 'ice_candidate', data.candidate);
     });
 
     socket.on('disconnect', async () => {
-      console.log(`[Socket] Disconnected: ${user.sessionId.slice(0, 8)}... (${socket.id})`);
+      console.log(`[Socket] Disconnected: ${sessionId.slice(0, 8)}... (${socket.id})`);
 
       try {
-        if (user.currentMatchId) {
-          await endCurrentMatch(io, user, 'disconnect');
+        const match = activeMatches.get(sessionId);
+        if (match) {
+          await endMatchHelper('disconnect');
         } else {
-          matchingEngine.removeFromQueue(user.sessionId);
-          await queueRepository.leave(user.sessionId);
+          await engines.queue.leave(sessionId, 'disconnect');
         }
-
-        await connectionLogRepository.log(user.sessionId, 'disconnect', { socketId: socket.id });
-        matchingEngine.unregisterUser(user.sessionId);
       } catch (error) {
         console.error('[Socket] disconnect error:', error);
+      } finally {
+        engines.signaling.signaling.unregisterSession(sessionId);
       }
     });
   });

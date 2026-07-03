@@ -8,12 +8,17 @@ import { Server as SocketServer } from 'socket.io';
 import { config } from './config/index.js';
 import { checkDatabaseConnection } from './database/client.js';
 import { globalErrorHandler, notFoundHandler } from './middleware/errorHandler.js';
-import routes from './routes/index.js';
+import { createRouter } from './routes/index.js';
 import { setupSocketHandlers } from './socket/index.js';
-import { cleanupService, statsService } from './services/index.js';
-import { matchingEngine } from './services/matchingEngine.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+// V2 engine imports
+import { createEngines } from './engines/index.js';
+import { SupabaseAdapter } from './adapters/SupabaseAdapter.js';
+import { SocketIOSignalingAdapter } from './adapters/SocketIOSignalingAdapter.js';
+import { ConsoleLogger } from './adapters/ConsoleLogger.js';
+import { EventBus } from './events/EventBus.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -22,7 +27,7 @@ const allowedOrigins = [
   config.frontendUrl,
   'http://localhost:5173',
   'http://localhost:5000',
-  'http://localhost:3000'
+  'http://localhost:3000',
 ].filter(Boolean);
 
 const io = new SocketServer(server, {
@@ -40,6 +45,14 @@ const io = new SocketServer(server, {
   pingTimeout: 60000,
   pingInterval: 25000,
 });
+
+// Construct V2 architecture engines and adapters
+const dbAdapter = new SupabaseAdapter();
+const loggerAdapter = new ConsoleLogger();
+const eventBus = new EventBus();
+const signalingAdapter = new SocketIOSignalingAdapter(io);
+
+export const engines = createEngines(dbAdapter, signalingAdapter, loggerAdapter, eventBus);
 
 app.set('trust proxy', 1);
 
@@ -59,7 +72,7 @@ app.use(helmet({
         "https://*.vercel.app",
         "wss://*.vercel.app",
         "stun:*",
-        "turn:*"
+        "turn:*",
       ],
       mediaSrc: ["'self'", "blob:"],
       imgSrc: ["'self'", "data:", "blob:", "https://*.supabase.co", "https://*.supabase.in"],
@@ -87,7 +100,8 @@ app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-app.use('/api', routes);
+// Dynamic routes initialization with engines injection
+app.use('/api', createRouter(engines));
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distPath = path.resolve(__dirname, '../../frontend/dist');
@@ -106,10 +120,12 @@ app.get('*', (req, res, next) => {
 app.use(notFoundHandler);
 app.use(globalErrorHandler);
 
-setupSocketHandlers(io);
+// Dynamic socket setup with engines injection
+setupSocketHandlers(io, engines);
 
 let metricsInterval: ReturnType<typeof setInterval> | null = null;
 let cleanupInterval: ReturnType<typeof setInterval> | null = null;
+let reservationInterval: ReturnType<typeof setInterval> | null = null;
 
 async function startServer(): Promise<void> {
   const dbConnected = await checkDatabaseConnection();
@@ -122,26 +138,40 @@ async function startServer(): Promise<void> {
   }
 
   server.listen(config.port, () => {
-    console.log(`[Server] IndiaTV backend running on port ${config.port}`);
+    console.log(`[Server] IndiaTV V2 backend running on port ${config.port}`);
     console.log(`[Server] Frontend URL: ${config.frontendUrl}`);
     console.log(`[Server] Environment: ${config.nodeEnv}`);
   });
 
+  // Metrics interval using the engines analytics snapshotting
   metricsInterval = setInterval(async () => {
     try {
-      await statsService.recordMetrics(matchingEngine.getOnlineCount());
+      const onlineCount = io.engine.clientsCount;
+      await engines.analytics.recordMetrics(onlineCount);
     } catch (error) {
       console.error('[Metrics] Failed to record:', error);
     }
   }, config.metricsIntervalMs);
 
+  // Stale entry cleanups (self-healing queues and expired messages)
   cleanupInterval = setInterval(async () => {
     try {
-      await cleanupService.runCleanup(config.queueStaleMs, config.matchStaleMs);
+      const reservationTimeoutMs = 10000; // 10s timeout
+      await engines.queue.cleanupStale(config.queueStaleMs, reservationTimeoutMs);
+      await engines.chat.purgeExpired();
     } catch (error) {
       console.error('[Cleanup] Failed:', error);
     }
   }, config.cleanupIntervalMs);
+
+  // Active reservation timeouts checking loop
+  reservationInterval = setInterval(async () => {
+    try {
+      await engines.reservation.cleanupExpired();
+    } catch (error) {
+      console.error('[Reservation cleanup] Failed:', error);
+    }
+  }, 2000);
 }
 
 function gracefulShutdown(signal: string): void {
@@ -149,6 +179,7 @@ function gracefulShutdown(signal: string): void {
 
   if (metricsInterval) clearInterval(metricsInterval);
   if (cleanupInterval) clearInterval(cleanupInterval);
+  if (reservationInterval) clearInterval(reservationInterval);
 
   io.close(() => {
     server.close(() => {

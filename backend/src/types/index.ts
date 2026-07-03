@@ -13,7 +13,9 @@ export type ConnectionEvent =
   | 'reconnect'
   | 'next'
   | 'report'
-  | 'error';
+  | 'error'
+  | 'reserved'
+  | 'ready';
 
 export interface VisitorSession {
   id: string;
@@ -133,4 +135,119 @@ export interface IceServerConfig {
   urls: string | string[];
   username?: string;
   credential?: string;
+}
+
+// =============================================
+// V2 ENGINE TYPES
+// =============================================
+
+/** User lifecycle states */
+export type UserState = 'created' | 'active' | 'searching' | 'reserved' | 'matched' | 'negotiating' | 'connected' | 'ended';
+
+/** Match lifecycle states */
+export type MatchLifecycle = 'creating' | 'reserved' | 'ready' | 'negotiating' | 'connected' | 'disconnected' | 'ended' | 'archived' | 'cancelled' | 'failed';
+
+/** Queue entry states (expanded) */
+export type QueueEntryState = 'waiting' | 'reserved' | 'matched' | 'left' | 'expired';
+
+/** Scoring factor interface for extensible scoring */
+export interface ScoringFactor {
+  name: string;
+  weight: number;
+  calculate(self: CandidateProfile, candidate: CandidateProfile, context: ScoringContext): FactorResult;
+}
+
+/** Result from a single scoring factor */
+export interface FactorResult {
+  factor: string;
+  raw: number;
+  weighted: number;
+  reason: string;
+}
+
+/** Complete scoring result with confidence level */
+export interface ScoringResult {
+  totalScore: number;
+  confidence: MatchConfidence;
+  breakdown: FactorResult[];
+  candidateSessionId: string;
+}
+
+/** Match confidence levels */
+export type MatchConfidence = 'instant' | 'very_good' | 'good' | 'acceptable' | 'fallback';
+
+/** Candidate profile data used for scoring */
+export interface CandidateProfile {
+  sessionId: string;
+  gender?: string;
+  lookingFor?: string[];
+  languages?: string[];
+  country?: string;
+  state?: string;
+  district?: string;
+  city?: string;
+  interestTags?: string[];
+  queueEnteredAt?: string;
+  lastPartner?: string;
+  reportCount?: number;
+  successfulMatches?: number;
+}
+
+/** Context data provided to scoring factors */
+export interface ScoringContext {
+  recentPartnerIds: string[];
+  reportedUserIds: string[];
+  waitingSeconds: number;
+}
+
+/** Database row for reservations table */
+export interface Reservation {
+  id: string;
+  user_a: string;
+  user_b: string;
+  status: 'pending' | 'confirmed' | 'expired' | 'cancelled';
+  match_id?: string;
+  created_at: string;
+  expires_at: string;
+}
+
+/** Signaling message with ACK support */
+export interface SignalingMessage {
+  id: string;
+  matchId: string;
+  type: 'match_found' | 'ready' | 'start_negotiation' | 'offer' | 'answer' | 'ice_candidate' | 'partner_left';
+  payload: unknown;
+  requiresAck: boolean;
+  sentAt: number;
+  retryCount: number;
+}
+
+/** Ready state tracking for a match */
+export interface ReadyState {
+  matchId: string;
+  userAReady: boolean;
+  userBReady: boolean;
+  userAReadyAt?: string;
+  userBReadyAt?: string;
+}
+
+/** Expanded WaitingQueueEntry with reservation fields */
+export interface WaitingQueueEntryV2 extends WaitingQueueEntry {
+  reserved_by?: string | null;
+  reserved_at?: string | null;
+}
+
+/** Expanded Match with lifecycle fields */
+export interface MatchV2 extends Match {
+  lifecycle?: MatchLifecycle;
+  ready_a?: boolean;
+  ready_b?: boolean;
+  ready_at?: string | null;
+  liked_by_a?: boolean;
+  liked_by_b?: boolean;
+}
+
+/** Expanded VisitorSession with user state */
+export interface VisitorSessionV2 extends VisitorSession {
+  user_state?: UserState;
 }

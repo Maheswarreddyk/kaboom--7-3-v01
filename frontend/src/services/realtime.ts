@@ -6,6 +6,7 @@ import { config, getApiBaseUrl, getSocketUrl } from '../config.js';
 
 export interface RealtimeCallbacks {
   onWaiting?: (data: { queuePosition: number; message: string }) => void;
+  onMatchFound?: (data: { matchId: string; partnerSessionId: string }) => void;
   onMatched?: (data: {
     matchId: string;
     partnerSessionId: string;
@@ -56,7 +57,12 @@ function cleanupMatchChannel() {
   partnerSessionId = null;
 }
 
-function subscribeToMatchChannel(matchId: string, callbacks: RealtimeCallbacks) {
+function subscribeToMatchChannel(
+  matchId: string,
+  sessionId: string,
+  sessionToken: string,
+  callbacks: RealtimeCallbacks
+) {
   const supabase = getSupabaseClient();
   if (!supabase) {
     callbacks.onError?.({ message: 'Realtime not configured. Check Supabase settings.' });
@@ -68,6 +74,15 @@ function subscribeToMatchChannel(matchId: string, callbacks: RealtimeCallbacks) 
 
   matchChannel = supabase
     .channel(`match:${matchId}`, { config: { broadcast: { self: false } } })
+    .on('broadcast', { event: 'start_negotiation' }, ({ payload }) => {
+      const data = payload as { isInitiator: boolean; iceServers: IceServerConfig[] };
+      callbacks.onMatched?.({
+        matchId,
+        partnerSessionId: partnerSessionId || '',
+        isInitiator: data.isInitiator,
+        iceServers: data.iceServers,
+      });
+    })
     .on('broadcast', { event: 'offer' }, ({ payload }) => {
       callbacks.onOffer?.(payload as { fromSessionId: string; offer: RTCSessionDescriptionInit });
     })
@@ -80,7 +95,14 @@ function subscribeToMatchChannel(matchId: string, callbacks: RealtimeCallbacks) 
     .on('broadcast', { event: 'typing' }, ({ payload }) => {
       callbacks.onPartnerTyping?.(payload as { typing: boolean });
     })
-    .subscribe();
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        // Send ready confirmation to server once subscribed
+        apiPost('/match/ready', { sessionId, sessionToken, matchId }).catch((err) => {
+          console.error('[Realtime] Failed to send ready state:', err);
+        });
+      }
+    });
 }
 
 export function connectRealtime(
@@ -90,7 +112,7 @@ export function connectRealtime(
 ): void {
   if (config.signalingProvider === 'socketio') {
     disconnectRealtime();
-    
+
     const socketUrl = getSocketUrl();
     socket = io(socketUrl, {
       auth: { sessionId, sessionToken },
@@ -98,10 +120,22 @@ export function connectRealtime(
       autoConnect: true,
     });
 
-    socket.on('matched', (data: { matchId: string; partnerSessionId: string; isInitiator: boolean; iceServers: IceServerConfig[] }) => {
+    socket.on('match_found', (data: { matchId: string; partnerSessionId: string }) => {
       currentMatchId = data.matchId;
       partnerSessionId = data.partnerSessionId;
-      callbacks.onMatched?.(data);
+      callbacks.onMatchFound?.(data);
+
+      // Join socket.io room on server and emit ready state
+      socket?.emit('ready', { matchId: data.matchId });
+    });
+
+    socket.on('start_negotiation', (data: { matchId: string; isInitiator: boolean; iceServers: IceServerConfig[] }) => {
+      callbacks.onMatched?.({
+        matchId: data.matchId,
+        partnerSessionId: partnerSessionId || '',
+        isInitiator: data.isInitiator,
+        iceServers: data.iceServers,
+      });
     });
 
     socket.on('partner_left', (data: { reason: string }) => {
@@ -163,16 +197,13 @@ export function connectRealtime(
 
   sessionChannel = supabase
     .channel(`session:${sessionId}`, { config: { broadcast: { self: false } } })
-    .on('broadcast', { event: 'matched' }, ({ payload }) => {
-      const data = payload as {
-        matchId: string;
-        partnerSessionId: string;
-        isInitiator: boolean;
-        iceServers: IceServerConfig[];
-      };
+    .on('broadcast', { event: 'match_found' }, ({ payload }) => {
+      const data = payload as { matchId: string; partnerSessionId: string };
       partnerSessionId = data.partnerSessionId;
-      subscribeToMatchChannel(data.matchId, callbacks);
-      callbacks.onMatched?.(data);
+      callbacks.onMatchFound?.(data);
+
+      // Subscribe to match channel and send ready confirmation
+      subscribeToMatchChannel(data.matchId, sessionId, sessionToken, callbacks);
     })
     .on('broadcast', { event: 'partner_left' }, ({ payload }) => {
       cleanupMatchChannel();
@@ -240,13 +271,8 @@ export async function joinQueue(sessionId: string, sessionToken: string, callbac
   if (data.status === 'matched') {
     const matchId = data.matchId as string;
     partnerSessionId = data.partnerSessionId as string;
-    subscribeToMatchChannel(matchId, callbacks);
-    callbacks.onMatched?.({
-      matchId,
-      partnerSessionId: data.partnerSessionId as string,
-      isInitiator: data.isInitiator as boolean,
-      iceServers: data.iceServers as IceServerConfig[],
-    });
+    callbacks.onMatchFound?.({ matchId, partnerSessionId });
+    subscribeToMatchChannel(matchId, sessionId, sessionToken, callbacks);
   }
 }
 
@@ -287,26 +313,20 @@ export async function nextPartner(sessionId: string, sessionToken: string, callb
   if (data.status === 'matched') {
     const matchId = data.matchId as string;
     partnerSessionId = data.partnerSessionId as string;
-    subscribeToMatchChannel(matchId, callbacks);
-    callbacks.onMatched?.({
-      matchId,
-      partnerSessionId: data.partnerSessionId as string,
-      isInitiator: data.isInitiator as boolean,
-      iceServers: data.iceServers as IceServerConfig[],
-    });
+    callbacks.onMatchFound?.({ matchId, partnerSessionId });
+    subscribeToMatchChannel(matchId, sessionId, sessionToken, callbacks);
   }
 }
 
 export async function notifyDisconnect(sessionId: string, sessionToken: string, reason: string) {
   if (config.signalingProvider === 'socketio') {
-    // Socket.io handles disconnect natively on connection loss
     return;
   }
 
   try {
     await apiPost('/match/disconnect', { sessionId, sessionToken, reason });
   } catch {
-    // Best-effort on page unload
+    // Best-effort
   }
 }
 
@@ -353,6 +373,12 @@ export function sendIceCandidate(fromSessionId: string, candidate: RTCIceCandida
     event: 'ice_candidate',
     payload: { fromSessionId, candidate },
   });
+}
+
+export function emitHeartbeat(): void {
+  if (config.signalingProvider === 'socketio') {
+    socket?.emit('heartbeat');
+  }
 }
 
 export function getCurrentMatchId(): string | null {

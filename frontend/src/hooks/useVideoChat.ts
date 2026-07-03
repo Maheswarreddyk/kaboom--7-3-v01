@@ -14,6 +14,7 @@ import {
   sendTyping,
   emitLikePartner,
   emitChatMessage,
+  emitHeartbeat,
 } from '../services/realtime.js';
 import { config } from '../config.js';
 import { webrtcManager } from '../webrtc/index.js';
@@ -128,6 +129,15 @@ export function useVideoChat(sessionId: string | null, sessionToken: string | nu
         updateChatState({
           status: 'waiting',
           queuePosition: data.queuePosition,
+          connectionStatus: 'connecting',
+        });
+      },
+      onMatchFound: (data: { matchId: string; partnerSessionId: string }) => {
+        partnerSessionIdRef.current = data.partnerSessionId;
+        updateChatState({
+          status: 'reserved',
+          partnerSessionId: data.partnerSessionId,
+          matchId: data.matchId,
           connectionStatus: 'connecting',
         });
       },
@@ -286,17 +296,23 @@ export function useVideoChat(sessionId: string | null, sessionToken: string | nu
   }, []);
 
   useEffect(() => {
-    if (chatState.status !== 'waiting' || !sessionId || !sessionToken || !callbacksRef.current) {
+    if (chatState.status === 'idle' || !sessionId || !sessionToken || !callbacksRef.current) {
       return;
     }
 
     const interval = setInterval(async () => {
       try {
-        await joinQueue(sessionId, sessionToken, callbacksRef.current!);
+        if (config.signalingProvider === 'socketio') {
+          emitHeartbeat();
+        } else {
+          if (chatState.status === 'waiting') {
+            await joinQueue(sessionId, sessionToken, callbacksRef.current!);
+          }
+        }
       } catch (error) {
-        console.error('Error polling matchmaking queue:', error);
+        console.error('Heartbeat error:', error);
       }
-    }, 4000);
+    }, config.signalingProvider === 'socketio' ? 5000 : 8000);
 
     return () => clearInterval(interval);
   }, [chatState.status, sessionId, sessionToken]);

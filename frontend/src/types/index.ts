@@ -1,4 +1,4 @@
-export type SessionStatus = 'idle' | 'starting' | 'waiting' | 'matched' | 'connected' | 'ended';
+export type SessionStatus = 'idle' | 'starting' | 'waiting' | 'reserved' | 'matched' | 'connected' | 'ended';
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'failed' | 'reconnecting';
 export type ReportReason = 'spam' | 'nudity' | 'abuse' | 'harassment' | 'other';
 
@@ -24,6 +24,17 @@ export interface IceServerConfig {
 export interface MatchedPayload {
   matchId: string;
   partnerSessionId: string;
+  isInitiator: boolean;
+  iceServers: IceServerConfig[];
+}
+
+export interface MatchFoundPayload {
+  matchId: string;
+  reservationId: string;
+}
+
+export interface StartNegotiationPayload {
+  matchId: string;
   isInitiator: boolean;
   iceServers: IceServerConfig[];
 }
